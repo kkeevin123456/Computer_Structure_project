@@ -19,20 +19,17 @@ int binary_to_int(char* a, int n){
 
 class block{
     private:
-        char* data;
+        int data;
         bool nru_bit;
         int Index;
         int Tag;
     public:
         block():data(0), nru_bit(1){};
-        block(char* a):data(a), nru_bit(1){};
-        char* get_array_data(){
+        block(int a):data(a), nru_bit(1){};
+        int get_int_data(){
             return data;
         }
-        int get_int_data(){
-            return binary_to_int(data, Address_bits);
-        }
-        void set_data(char* a){
+        void set_data(int a){
             data = a;
         }
         bool get_nru(){
@@ -87,16 +84,43 @@ int main(int argc, char* argv[]){
 
     vector<bool> table;
 
-    // initialize cache (for direct mapped)
-    vector<block> cache;
-    cache.resize(Cache_sets);
-    char a1[1];
-    a1[0]=0;
-    for(int i=0; i<cache.size(); i++){
-        cache[i].set_data(a1);
+    // output file
+    ofstream output(argv[3]);
+    output << "Address bits: " << Address_bits << endl;
+    output << "Block size: " << Block_size << endl;
+    output << "Cache sets: " << Cache_sets << endl;
+    output << "Associativity: " << Associativity << endl;
+    output << endl;
+    output << "Offset bit count: " << Offset_bits << endl;
+    output << "Indexing bit count: " << Index_bits << endl;
+    output << "Indexing bits: ";
+    for(int i=0; i<Index_bits; i++)
+        output << Offset_bits+i << " ";
+    output << endl;
+    output << endl;
+
+    output << ".benchmark testcase1" << endl;
+
+    // initialize cache
+    block b[Cache_sets][Associativity];
+    if(Associativity == 1){
+        for(int i=0; i<Cache_sets; i++){
+            b[i][0].set_data(-1);
+        }
     }
+    else{
+        char a1[1];
+        a1[0] = 0;
+        for(int i=0; i<Cache_sets; i++){
+            for(int j=0; j<Associativity; j++){
+                b[i][j].set_data(-1);
+            }
+        }
+    }
+    
 
     while(1){
+        bool ans;
         // read one line of data once a line
         char c[Address_bits];
         input1 >> c[0];
@@ -105,12 +129,12 @@ int main(int argc, char* argv[]){
         for(int i=1; i<Address_bits; i++)
             input1 >> c[i];
 
-        /*for(int i=0; i<Address_bits; i++)
-            cout << c[i];
-        cout << endl;*/
+        // output c
+        for(int i=0; i<Address_bits; i++)
+            output << c[i];
+        output << " ";
 
-        if(Associativity == 1){
-            // calculate index
+        // calculate index
             char index1[Index_bits];
             for(int i=0; i<Index_bits; i++)
                 index1[i] = c[tag_bits+i];
@@ -124,35 +148,85 @@ int main(int argc, char* argv[]){
         
             int tag = binary_to_int(tag1, tag_bits);
         
+        if(Associativity == 1){ // direct mapped
             // insert to cache
-            if(cache[index].get_int_data() == 0){ // cache miss & nothing in this block
-                cache[index].set_data(c);
-                cache[index].set_nru(0);
-                cache[index].set_index(index);
-                cache[index].set_tag(tag);
+            if(b[index][0].get_int_data() == -1){ // cache miss & nothing in this block
+                b[index][0].set_data(binary_to_int(c, Address_bits));
+                b[index][0].set_nru(0);
+                b[index][0].set_index(index);
+                b[index][0].set_tag(tag);
                 table.push_back(0);
+                ans = 0;
             } else { // there are data in the block
-                if(cache[index].get_tag() != tag){ // cache miss
-                    cache[index].set_data(c);
-                    cache[index].set_nru(0);
-                    cache[index].set_index(index);
-                    cache[index].set_tag(tag);
+                if(b[index][0].get_tag() != tag){ // cache miss
+                    b[index][0].set_data(binary_to_int(c, Address_bits));
+                    b[index][0].set_nru(0);
+                    b[index][0].set_index(index);
+                    b[index][0].set_tag(tag);
                     table.push_back(0);
+                    ans = 0;
                 }
                 else { // cache hit
                     table.push_back(1);
+                    ans = 1;
                 }
             }
         }
-        /*else {
+        else {
+            /*for(int i=0; i<Cache_sets; i++){
+                cout << b[i][0].get_int_data() << " " << b[i][1].get_int_data() << endl;
+            }
+            cout << endl;*/
 
-        }*/
+            int flag=1;
+            for(int i=0; i<Associativity; i++){
+                if(b[index][i].get_int_data() != -1){
+                    if(b[index][i].get_tag() == tag){ // hit
+                        b[index][i].set_nru(0);
+                        table.push_back(1);
+                        ans = 1;
+                        flag=0;
+                        break;
+                    }
+                }
+            }
+            if(flag){ // miss
+                int j;
+                for(j=0; j<Associativity; j++){
+                    if(b[index][j].get_nru() == 1)
+                        break;
+                }
+                if(j == Associativity){
+                    for(int k=0; k<Associativity; k++)
+                        b[index][k].set_nru(1);
+
+                    for(j=0; j<Associativity; j++){
+                        if(b[index][j].get_nru() == 1)
+                            break;
+                    }
+                }
+                b[index][j].set_data(binary_to_int(c, Address_bits));
+                b[index][j].set_nru(0);
+                b[index][j].set_index(index);
+                b[index][j].set_tag(tag);
+                table.push_back(0);
+                ans = 0;
+            }
+        }
+
+        if(ans)
+            output << "hit" << endl;
+        else
+            output << "miss" << endl;
     }
 
+    output << ".end" << endl;
+    output << endl;
+
+    int miss_count = 0;
     for(int i=0; i<table.size(); i++){
         if(table[i] == 0)
-            cout << "miss" << endl;
-        else
-            cout << "hit" << endl;
+            miss_count++;
     }
+    output << "Total cache miss count: " << miss_count << endl;
 }
